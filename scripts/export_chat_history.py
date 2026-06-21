@@ -401,7 +401,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.output is not None:
         return 0
 
-    index_path = output_dir / "README.md"
+    index_path = output_dir / "INDEX.md"
     index_path.write_text(
         render_index_markdown(exported, generated_at=generated_at),
         encoding="utf-8",
