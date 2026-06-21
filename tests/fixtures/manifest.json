@@ -1,0 +1,14 @@
+{
+  "source": "vadimkin",
+  "dataset": "official_data_en",
+  "row_count": 8,
+  "columns": [
+    "oblast",
+    "raion",
+    "hromada",
+    "level",
+    "started_at",
+    "finished_at",
+    "source"
+  ]
+}

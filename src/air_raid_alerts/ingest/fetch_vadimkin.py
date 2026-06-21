@@ -13,21 +13,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from air_raid_alerts.paths import raw_vadimkin_dir
+from air_raid_alerts.schema import EXPECTED_COLUMNS, VADIMKIN_COLUMNS
 
 REPO = "Vadimkin/ukrainian-air-raid-sirens-dataset"
 FILE_PATH = "datasets/official_data_en.csv"
 RAW_URL = f"https://raw.githubusercontent.com/{REPO}/main/{FILE_PATH}"
 API_URL = f"https://api.github.com/repos/{REPO}/contents/{FILE_PATH}"
 
-EXPECTED_COLUMNS = (
-    "oblast",
-    "raion",
-    "hromada",
-    "level",
-    "started_at",
-    "finished_at",
-    "source",
-)
 OUTPUT_FILENAME = "official_data_en.csv"
 MANIFEST_FILENAME = "manifest.json"
 
