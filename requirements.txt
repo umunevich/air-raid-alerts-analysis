@@ -1,0 +1,14 @@
+# Core data & time series
+pandas>=2.2,<3
+numpy>=1.26,<3
+
+# Modeling & evaluation
+scikit-learn>=1.4,<2
+lightgbm>=4.3,<5
+
+# Visualization & exploration
+matplotlib>=3.8,<4
+seaborn>=0.13,<1
+
+# Configuration
+PyYAML>=6.0,<7

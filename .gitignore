@@ -176,6 +176,8 @@ cython_debug/
 # Project data (downloaded upstream CSVs)
 data/raw/**/*
 !data/raw/**/.gitkeep
+data/processed/**/*
+!data/processed/**/.gitkeep
 
 # Cursor  
 #  Cursor is an AI-powered code editor.`.cursorignore` specifies files/directories to 
