@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
+import numpy as np
 import pandas as pd
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
@@ -38,6 +39,12 @@ def primary_train_mask(training_matrix: pd.DataFrame) -> pd.Series:
     return training_matrix[ProcessedCol.IN_PRIMARY_TRAIN].astype(bool)
 
 
+def validation_split_mask(training_matrix: pd.DataFrame) -> pd.Series:
+    if ProcessedCol.SPLIT not in training_matrix.columns:
+        raise ValueError(f"Missing column: {ProcessedCol.SPLIT}")
+    return training_matrix[ProcessedCol.SPLIT] == "validation"
+
+
 def test_split_mask(training_matrix: pd.DataFrame) -> pd.Series:
     if ProcessedCol.SPLIT not in training_matrix.columns:
         raise ValueError(f"Missing column: {ProcessedCol.SPLIT}")
@@ -57,26 +64,57 @@ def _make_pipeline() -> Pipeline:
     )
 
 
+def _raw_probabilities(pipeline: Pipeline, features: pd.DataFrame) -> np.ndarray:
+    return pipeline.predict_proba(features)[:, 1]
+
+
 @dataclass(frozen=True)
 class FittedExposureModel:
     region_id: str
     horizons: tuple[int, ...]
     feature_columns: tuple[str, ...]
     pipelines: dict[int, Pipeline]
+    calibrators: dict[int, object] | None = None
 
-    def predict(self, rows: pd.DataFrame) -> pd.DataFrame:
+    @property
+    def is_calibrated(self) -> bool:
+        return bool(self.calibrators)
+
+    def with_calibrators(self, calibrators: dict[int, object]) -> FittedExposureModel:
+        return replace(self, calibrators=calibrators)
+
+    def _feature_frame(self, rows: pd.DataFrame) -> pd.DataFrame:
         missing = set(self.feature_columns) - set(rows.columns)
         if missing:
             raise ValueError(f"Missing feature columns: {sorted(missing)}")
+        return rows.loc[:, list(self.feature_columns)]
 
-        features = rows.loc[:, list(self.feature_columns)]
+    def predict_raw(self, rows: pd.DataFrame) -> pd.DataFrame:
+        features = self._feature_frame(rows)
         predictions: dict[str, pd.Series] = {}
         for horizon in self.horizons:
-            pipeline = self.pipelines[horizon]
-            probabilities = pipeline.predict_proba(features)[:, 1]
+            probabilities = _raw_probabilities(self.pipelines[horizon], features)
             column = model_prediction_column(horizon)
             predictions[column] = pd.Series(probabilities, index=rows.index)
         return pd.DataFrame(predictions, index=rows.index)
+
+    def predict(self, rows: pd.DataFrame) -> pd.DataFrame:
+        raw = self.predict_raw(rows)
+        if not self.calibrators:
+            return raw
+
+        from air_raid_alerts.models.calibration import apply_horizon_calibrator
+
+        calibrated: dict[str, pd.Series] = {}
+        for horizon in self.horizons:
+            column = model_prediction_column(horizon)
+            calibrator = self.calibrators.get(horizon)
+            if calibrator is None:
+                calibrated[column] = raw[column]
+                continue
+            probabilities = apply_horizon_calibrator(calibrator, raw[column].to_numpy())
+            calibrated[column] = pd.Series(probabilities, index=rows.index)
+        return pd.DataFrame(calibrated, index=rows.index)
 
 
 def fit_exposure_model(
@@ -113,4 +151,5 @@ def fit_exposure_model(
         horizons=tuple(horizon_list),
         feature_columns=tuple(feature_columns),
         pipelines=pipelines,
+        calibrators=None,
     )

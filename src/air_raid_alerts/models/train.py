@@ -11,17 +11,20 @@ import pandas as pd
 
 from air_raid_alerts.evaluation.metrics import HorizonMetrics, binary_probabilistic_metrics
 from air_raid_alerts.models.baselines import (
+    BASELINE_PERSISTENCE,
     BASELINE_SEASONAL,
     baseline_prediction_column,
     fit_baselines,
     predict_baselines,
 )
+from air_raid_alerts.models.calibration import CalibrationMethod, calibrate_exposure_model
 from air_raid_alerts.models.exposure import (
     FittedExposureModel,
     fit_exposure_model,
     model_prediction_column,
     primary_train_mask,
     test_split_mask,
+    validation_split_mask,
 )
 from air_raid_alerts.models.persist import model_output_path, save_exposure_model
 from air_raid_alerts.paths import region_processed_dir
@@ -36,7 +39,9 @@ METRICS_FILENAME = "exposure_model_metrics.json"
 class HorizonEvaluation:
     horizon: int
     model: HorizonMetrics
+    persistence_baseline: HorizonMetrics
     seasonal_baseline: HorizonMetrics
+    brier_uplift_vs_persistence: float
     brier_uplift_vs_seasonal: float
 
 
@@ -44,8 +49,11 @@ class HorizonEvaluation:
 class ExposureTrainingReport:
     region_id: str
     train_rows: int
+    validation_rows: int
     test_rows: int
     feature_count: int
+    calibrated: bool
+    calibration_method: CalibrationMethod | None
     horizons: tuple[HorizonEvaluation, ...]
 
 
@@ -72,15 +80,20 @@ def evaluate_exposure_model(
     training_matrix: pd.DataFrame,
     *,
     eval_mask: pd.Series | None = None,
+    calibration_method: CalibrationMethod | None = None,
 ) -> ExposureTrainingReport:
     mask = eval_mask if eval_mask is not None else test_split_mask(training_matrix)
     eval_df = training_matrix.loc[mask]
     if eval_df.empty:
         raise ValueError("No evaluation rows available")
 
-    seasonal_baseline = fit_baselines(training_matrix)
+    baselines = fit_baselines(training_matrix)
     model_preds = model.predict(eval_df)
-    seasonal_preds = predict_baselines(seasonal_baseline, eval_df, baselines=[BASELINE_SEASONAL])
+    baseline_preds = predict_baselines(
+        baselines,
+        eval_df,
+        baselines=[BASELINE_PERSISTENCE, BASELINE_SEASONAL],
+    )
 
     horizon_evaluations: list[HorizonEvaluation] = []
     for horizon in model.horizons:
@@ -91,27 +104,39 @@ def evaluate_exposure_model(
             model_preds[model_prediction_column(horizon)].to_numpy(),
             horizon=horizon,
         )
+        persistence_column = baseline_prediction_column(BASELINE_PERSISTENCE, horizon)
+        persistence_metrics = binary_probabilistic_metrics(
+            y_true,
+            baseline_preds[persistence_column].to_numpy(),
+            horizon=horizon,
+        )
         seasonal_column = baseline_prediction_column(BASELINE_SEASONAL, horizon)
         seasonal_metrics = binary_probabilistic_metrics(
             y_true,
-            seasonal_preds[seasonal_column].to_numpy(),
+            baseline_preds[seasonal_column].to_numpy(),
             horizon=horizon,
         )
         horizon_evaluations.append(
             HorizonEvaluation(
                 horizon=horizon,
                 model=model_metrics,
+                persistence_baseline=persistence_metrics,
                 seasonal_baseline=seasonal_metrics,
+                brier_uplift_vs_persistence=persistence_metrics.brier_score - model_metrics.brier_score,
                 brier_uplift_vs_seasonal=seasonal_metrics.brier_score - model_metrics.brier_score,
             )
         )
 
     train_mask = primary_train_mask(training_matrix)
+    val_mask = validation_split_mask(training_matrix)
     return ExposureTrainingReport(
         region_id=model.region_id,
         train_rows=int(train_mask.sum()),
+        validation_rows=int(val_mask.sum()),
         test_rows=int(mask.sum()),
         feature_count=len(model.feature_columns),
+        calibrated=model.is_calibrated,
+        calibration_method=calibration_method if model.is_calibrated else None,
         horizons=tuple(horizon_evaluations),
     )
 
@@ -121,37 +146,57 @@ def train_and_evaluate(
     *,
     csv_path: Path | None = None,
     save_model: bool = True,
+    calibrate: bool = True,
+    calibration_method: CalibrationMethod = "isotonic",
 ) -> tuple[FittedExposureModel, ExposureTrainingReport]:
-    """Fit per-horizon logistic models on primary train rows and score the test split."""
+    """Fit on primary train, calibrate on validation, score on test."""
     training_matrix = load_training_matrix(region_id, csv_path=csv_path)
     model = fit_exposure_model(
         training_matrix,
         region_id,
         fit_mask=primary_train_mask(training_matrix),
     )
+    if calibrate:
+        model = calibrate_exposure_model(
+            model,
+            training_matrix,
+            method=calibration_method,
+        )
     if save_model:
         save_exposure_model(model, model_output_path(region_id))
-    report = evaluate_exposure_model(model, training_matrix)
+    report = evaluate_exposure_model(
+        model,
+        training_matrix,
+        calibration_method=calibration_method if calibrate else None,
+    )
     return model, report
 
 
 def format_report(report: ExposureTrainingReport) -> str:
+    calibration_note = (
+        f"Calibrated: yes ({report.calibration_method}, validation rows: {report.validation_rows:,})"
+        if report.calibrated
+        else "Calibrated: no"
+    )
     lines = [
         f"Region: {report.region_id}",
         f"Primary train rows: {report.train_rows:,}",
         f"Test rows: {report.test_rows:,}",
         f"Features: {report.feature_count}",
+        calibration_note,
         "",
-        "Horizon  Pos%   Brier   LogLoss  PR-AUC   Seasonal Brier  Brier uplift",
+        "Horizon  Pos%   Brier   LogLoss  PR-AUC   Persist Brier  Δ Persist  Seasonal Brier  Δ Seasonal",
     ]
     for item in report.horizons:
         model = item.model
+        persistence = item.persistence_baseline
         seasonal = item.seasonal_baseline
         pr_auc = f"{model.pr_auc:6.3f}" if not np.isnan(model.pr_auc) else "   n/a"
         lines.append(
             f"{model.horizon:7d}  {model.positive_rate:5.1%}  {model.brier_score:6.4f}  "
-            f"{model.log_loss:6.4f}  {pr_auc}  {seasonal.brier_score:13.4f}  "
-            f"{item.brier_uplift_vs_seasonal:12.4f}"
+            f"{model.log_loss:6.4f}  {pr_auc}  {persistence.brier_score:12.4f}  "
+            f"{item.brier_uplift_vs_persistence:9.4f}  {seasonal.brier_score:14.4f}  "
+            f"{item.brier_uplift_vs_seasonal:10.4f}"
         )
     return "\n".join(lines)
 
@@ -161,13 +206,18 @@ def write_report_json(report: ExposureTrainingReport, path: Path) -> None:
     payload = {
         "region_id": report.region_id,
         "train_rows": report.train_rows,
+        "validation_rows": report.validation_rows,
         "test_rows": report.test_rows,
         "feature_count": report.feature_count,
+        "calibrated": report.calibrated,
+        "calibration_method": report.calibration_method,
         "horizons": [
             {
                 "horizon": item.horizon,
                 "model": asdict(item.model),
+                "persistence_baseline": asdict(item.persistence_baseline),
                 "seasonal_baseline": asdict(item.seasonal_baseline),
+                "brier_uplift_vs_persistence": item.brier_uplift_vs_persistence,
                 "brier_uplift_vs_seasonal": item.brier_uplift_vs_seasonal,
             }
             for item in report.horizons
