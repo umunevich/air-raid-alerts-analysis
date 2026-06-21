@@ -2,24 +2,35 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
+import numpy as np
 import pandas as pd
 
 from air_raid_alerts.schema import (
-    EventCol,
     IntervalCol,
     PANEL_COLUMNS,
     PanelCol,
     exposure_label,
 )
+from air_raid_alerts.time_intervals import (
+    HOUR,
+    exposure_forward_overlap,
+    hour_floor,
+    interval_bounds_ns,
+    or_intervals_exposure_forward,
+    or_intervals_overlap_half_open,
+    overlaps_half_open,
+)
 
-HOUR = timedelta(hours=1)
-
-
-def hour_floor(ts: datetime) -> datetime:
-    ts = ts.astimezone(UTC)
-    return ts.replace(minute=0, second=0, microsecond=0)
+__all__ = [
+    "build_exposure_labels",
+    "build_hourly_origins",
+    "build_hourly_panel",
+    "exposure_in_forward_window",
+    "hour_floor",
+    "is_active_in_hour",
+]
 
 
 def is_active_in_hour(
@@ -33,9 +44,12 @@ def is_active_in_hour(
     """
     hour_end = hour_start + HOUR
     for _, row in intervals.iterrows():
-        start = row[IntervalCol.STARTED_AT]
-        end = row[IntervalCol.FINISHED_AT]
-        if start < hour_end and end > hour_start:
+        if overlaps_half_open(
+            row[IntervalCol.STARTED_AT],
+            row[IntervalCol.FINISHED_AT],
+            hour_start,
+            hour_end,
+        ):
             return True
     return False
 
@@ -55,10 +69,12 @@ def exposure_in_forward_window(
 
     window_end = origin + timedelta(hours=horizon_hours)
     for _, row in intervals.iterrows():
-        start = row[IntervalCol.STARTED_AT]
-        end = row[IntervalCol.FINISHED_AT]
-        # Overlap of [start, end] with (origin, window_end]
-        if start <= window_end and end > origin:
+        if exposure_forward_overlap(
+            row[IntervalCol.STARTED_AT],
+            row[IntervalCol.FINISHED_AT],
+            origin,
+            window_end,
+        ):
             return True
     return False
 
@@ -86,17 +102,29 @@ def build_hourly_panel(
         return pd.DataFrame(columns=list(PANEL_COLUMNS))
 
     region_id = intervals[IntervalCol.REGION_ID].iloc[0] if not intervals.empty else None
-    rows = []
-    for origin in origins:
-        origin_dt = origin.to_pydatetime()
-        rows.append(
+    if intervals.empty:
+        return pd.DataFrame(
             {
                 PanelCol.REGION_ID: region_id,
-                PanelCol.ORIGIN_HOUR: origin_dt,
-                PanelCol.ACTIVE: int(is_active_in_hour(intervals, origin_dt)),
+                PanelCol.ORIGIN_HOUR: origins.to_pydatetime(),
+                PanelCol.ACTIVE: 0,
             }
         )
-    return pd.DataFrame(rows)
+
+    hour_starts = origins.to_numpy(dtype="datetime64[ns]")
+    hour_ends = hour_starts + np.timedelta64(1, "h")
+    starts, ends = interval_bounds_ns(intervals)
+
+    active = np.zeros(len(hour_starts), dtype=np.int8)
+    or_intervals_overlap_half_open(starts, ends, hour_starts, hour_ends, active)
+
+    return pd.DataFrame(
+        {
+            PanelCol.REGION_ID: region_id,
+            PanelCol.ORIGIN_HOUR: origins.to_pydatetime(),
+            PanelCol.ACTIVE: active,
+        }
+    )
 
 
 def build_exposure_labels(
@@ -108,15 +136,27 @@ def build_exposure_labels(
     if horizons is None:
         horizons = range(1, 25)
 
-    rows = []
+    origin_index = pd.DatetimeIndex(origins, tz="UTC")
     region_id = intervals[IntervalCol.REGION_ID].iloc[0] if not intervals.empty else None
-    for origin in origins:
-        origin_dt = pd.Timestamp(origin).to_pydatetime()
-        row: dict = {PanelCol.REGION_ID: region_id, PanelCol.ORIGIN_HOUR: origin_dt}
-        for horizon in horizons:
-            row[exposure_label(horizon)] = int(
-                exposure_in_forward_window(intervals, origin_dt, horizon)
-            )
-        rows.append(row)
+    origin_hours = origin_index.to_pydatetime()
 
-    return pd.DataFrame(rows)
+    data: dict = {
+        PanelCol.REGION_ID: region_id,
+        PanelCol.ORIGIN_HOUR: origin_hours,
+    }
+
+    if intervals.empty:
+        for horizon in horizons:
+            data[exposure_label(horizon)] = 0
+        return pd.DataFrame(data)
+
+    origin_starts = origin_index.to_numpy(dtype="datetime64[ns]")
+    starts, ends = interval_bounds_ns(intervals)
+
+    for horizon in horizons:
+        window_ends = origin_starts + np.timedelta64(horizon, "h")
+        exposed = np.zeros(len(origin_starts), dtype=np.int8)
+        or_intervals_exposure_forward(starts, ends, origin_starts, window_ends, exposed)
+        data[exposure_label(horizon)] = exposed
+
+    return pd.DataFrame(data)

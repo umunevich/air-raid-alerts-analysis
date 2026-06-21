@@ -1,0 +1,10 @@
+# Hourly supervised training features (no leakage at forecast origin t).
+display_timezone: Europe/Kyiv
+
+lags_hours:
+  - 1
+  - 3
+  - 6
+  - 24
+  - 48
+  - 168

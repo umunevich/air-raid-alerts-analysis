@@ -3,19 +3,20 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pandas as pd
 
+from air_raid_alerts.regions import get_region
 from air_raid_alerts.schema import (
     AdminLevel,
     EventCol,
     VADIMKIN_COLUMNS,
     VadimkinCol,
 )
+from air_raid_alerts.time_intervals import is_outlier_event_duration as is_outlier_duration
 
 GRANULARITY_ERA_CUTOFF = datetime(2025, 12, 1, tzinfo=UTC)
-OUTLIER_DURATION = timedelta(days=7)
 
 
 def parse_utc_timestamp(value: str) -> datetime:
@@ -52,18 +53,6 @@ def granularity_era(started_at: datetime, level: str) -> str:
     return "mixed"
 
 
-def duration_minutes(started_at: datetime, finished_at: datetime | None) -> float | None:
-    if finished_at is None:
-        return None
-    return (finished_at - started_at).total_seconds() / 60.0
-
-
-def is_outlier_duration(started_at: datetime, finished_at: datetime | None) -> bool:
-    if finished_at is None:
-        return False
-    return finished_at - started_at > OUTLIER_DURATION
-
-
 def map_vadimkin_row(row: pd.Series) -> dict:
     started_at = parse_utc_timestamp(str(row[VadimkinCol.STARTED_AT]))
     finished_raw = row[VadimkinCol.FINISHED_AT]
@@ -92,11 +81,19 @@ def map_vadimkin_row(row: pd.Series) -> dict:
     }
 
 
-def load_vadimkin_events(csv_path: str | pd.PathLike) -> pd.DataFrame:
+def load_vadimkin_events(
+    csv_path: str | pd.PathLike,
+    *,
+    region_id: str | None = None,
+) -> pd.DataFrame:
     """Load raw CSV and return canonical event rows (one row per raw record)."""
     df = pd.read_csv(csv_path)
     if list(df.columns) != list(VADIMKIN_COLUMNS):
         raise ValueError(f"Unexpected Vadimkin header: {list(df.columns)}")
+
+    if region_id is not None:
+        spec = get_region(region_id)
+        df = df.loc[df[VadimkinCol.OBLAST] == spec.vadimkin_oblast]
 
     records = [map_vadimkin_row(row) for _, row in df.iterrows()]
     return pd.DataFrame.from_records(records)

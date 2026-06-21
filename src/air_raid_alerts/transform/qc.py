@@ -15,6 +15,7 @@ from air_raid_alerts.schema import (
     IntervalCol,
     exposure_label,
 )
+from air_raid_alerts.time_intervals import is_invalid_interval
 from air_raid_alerts.transform.clean import load_vadimkin_events
 
 
@@ -59,7 +60,7 @@ def validate_event_durations(events: pd.DataFrame) -> list[str]:
     errors: list[str] = []
     for idx, row in events.iterrows():
         finished = row[EventCol.FINISHED_AT]
-        if finished is not None and finished < row[EventCol.STARTED_AT]:
+        if finished is not None and is_invalid_interval(row[EventCol.STARTED_AT], finished):
             errors.append(f"Row {idx}: finished_at < started_at")
     return errors
 
@@ -71,7 +72,7 @@ def validate_merged_intervals(intervals: pd.DataFrame) -> list[str]:
 
     previous_end = None
     for idx, row in intervals.iterrows():
-        if row[IntervalCol.FINISHED_AT] < row[IntervalCol.STARTED_AT]:
+        if is_invalid_interval(row[IntervalCol.STARTED_AT], row[IntervalCol.FINISHED_AT]):
             errors.append(f"Interval {idx}: finished_at < started_at")
         if previous_end is not None and row[IntervalCol.STARTED_AT] <= previous_end:
             errors.append(f"Interval {idx}: overlaps previous merged interval")

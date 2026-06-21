@@ -68,6 +68,24 @@ class PanelCol:
     ACTIVE = "active"
 
 
+class ProcessedCol:
+    SPLIT = "split"
+    IN_PRIMARY_TRAIN = "in_primary_train"
+
+
+class FeatureCol:
+    ACTIVE_AT_ORIGIN = "active_at_origin"
+    TIME_SINCE_LAST_START_H = "time_since_last_start_h"
+    TIME_SINCE_LAST_END_H = "time_since_last_end_h"
+    HOUR_KYIV = "hour_kyiv"
+    DAY_OF_WEEK_KYIV = "dow_kyiv"
+    HOUR_OF_WEEK_KYIV = "hour_of_week_kyiv"
+
+
+def active_sum_column(lookback_hours: int) -> str:
+    return f"active_sum_{lookback_hours}h"
+
+
 PANEL_COLUMNS: tuple[str, ...] = (
     PanelCol.REGION_ID,
     PanelCol.ORIGIN_HOUR,
@@ -89,12 +107,15 @@ __all__ = [
     "AdminLevel",
     "EventCol",
     "EXPECTED_COLUMNS",
+    "FeatureCol",
     "IntervalCol",
     "MERGED_INTERVAL_COLUMNS",
     "PANEL_COLUMNS",
     "PanelCol",
+    "ProcessedCol",
     "VADIMKIN_COLUMNS",
     "VadimkinCol",
+    "active_sum_column",
     "exposure_label",
     "is_exposure_label",
 ]

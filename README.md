@@ -25,3 +25,13 @@ python scripts/update_raw_data.py
 # or
 air-alerts fetch
 ```
+
+## Build processed data (Kyiv city)
+
+```bash
+air-alerts process --region kyiv_city
+# or
+python scripts/process_region.py --region kyiv_city
+```
+
+Writes `data/processed/kyiv_city/intervals.csv`, `origins.csv`, and `manifest.json`.

@@ -11,6 +11,7 @@ from air_raid_alerts.transform.panel import (
     build_hourly_panel,
     exposure_in_forward_window,
 )
+from air_raid_alerts.transform.pipeline import build_region_dataset, process_region
 
 __all__ = [
     "load_vadimkin_events",
@@ -21,4 +22,6 @@ __all__ = [
     "build_hourly_panel",
     "build_exposure_labels",
     "exposure_in_forward_window",
+    "build_region_dataset",
+    "process_region",
 ]

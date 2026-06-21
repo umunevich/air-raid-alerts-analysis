@@ -20,3 +20,15 @@ def raw_vadimkin_dir() -> Path:
 
 def processed_dir() -> Path:
     return project_root() / "data" / "processed"
+
+
+def region_processed_dir(region_id: str) -> Path:
+    return processed_dir() / region_id
+
+
+def raw_vadimkin_csv() -> Path:
+    return raw_vadimkin_dir() / "official_data_en.csv"
+
+
+def raw_vadimkin_manifest() -> Path:
+    return raw_vadimkin_dir() / "manifest.json"

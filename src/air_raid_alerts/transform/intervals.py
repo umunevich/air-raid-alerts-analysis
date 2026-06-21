@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pandas as pd
 
 from air_raid_alerts.regions import RegionSpec, get_region
 from air_raid_alerts.schema import EventCol, IntervalCol, MERGED_INTERVAL_COLUMNS
+from air_raid_alerts.time_intervals import is_invalid_interval, is_outlier_interval_duration
 
 
 def filter_region_events(events: pd.DataFrame, region_id: str) -> pd.DataFrame:
@@ -20,10 +21,13 @@ def filter_region_events(events: pd.DataFrame, region_id: str) -> pd.DataFrame:
 
 
 def _to_interval_pairs(events: pd.DataFrame) -> list[tuple[datetime, datetime | None]]:
-    pairs: list[tuple[datetime, datetime | None]] = []
-    for _, row in events.iterrows():
-        pairs.append((row[EventCol.STARTED_AT], row[EventCol.FINISHED_AT]))
-    return pairs
+    return list(
+        zip(
+            events[EventCol.STARTED_AT],
+            events[EventCol.FINISHED_AT],
+            strict=True,
+        )
+    )
 
 
 def merge_intervals(
@@ -47,7 +51,7 @@ def merge_intervals(
             if data_cutoff is None:
                 raise ValueError("Open-ended interval requires data_cutoff")
             end = data_cutoff
-        if end < start:
+        if is_invalid_interval(start, end):
             raise ValueError(f"finished_at < started_at: {start} > {end}")
         normalized.append((start, end))
 
@@ -84,7 +88,7 @@ def build_merged_intervals(
 
     rows = []
     for start, end in merged:
-        outlier = end - start > timedelta(days=7)
+        outlier = is_outlier_interval_duration(start, end)
         rows.append(
             {
                 IntervalCol.REGION_ID: region_id,
