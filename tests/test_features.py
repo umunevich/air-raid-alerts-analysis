@@ -8,7 +8,6 @@ from air_raid_alerts.features.build import (
     feature_column_names,
     load_feature_config,
 )
-from air_raid_alerts.features.lags import sum_active_in_past_hours
 from air_raid_alerts.schema import FeatureCol, PanelCol, ProcessedCol, active_sum_column, exposure_label
 from air_raid_alerts.transform.clean import load_vadimkin_events
 from air_raid_alerts.transform.intervals import build_merged_intervals
@@ -53,7 +52,7 @@ def test_active_at_origin_and_lags_on_fixture(sample_vadimkin_path) -> None:
     assert row_10[active_sum_column(1)] == 1
 
 
-def test_lag_sums_match_scalar_helper(sample_vadimkin_path) -> None:
+def test_lag_sums_exclude_current_hour(sample_vadimkin_path) -> None:
     events = load_vadimkin_events(sample_vadimkin_path)
     merged = build_merged_intervals(events, "kyiv_city")
     panel = build_hourly_panel(merged, utc(2024, 6, 1, 7), utc(2024, 6, 1, 14))
@@ -62,7 +61,9 @@ def test_lag_sums_match_scalar_helper(sample_vadimkin_path) -> None:
     origin = utc(2024, 6, 1, 11)
     row = features.loc[features[PanelCol.ORIGIN_HOUR] == origin].iloc[0]
     for lookback in (1, 3, 6):
-        expected = sum_active_in_past_hours(panel, origin, lookback)
+        expected = int(
+            panel.loc[panel[PanelCol.ORIGIN_HOUR] < origin].tail(lookback)[PanelCol.ACTIVE].sum()
+        )
         assert row[active_sum_column(lookback)] == expected
 
 

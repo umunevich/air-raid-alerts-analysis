@@ -6,7 +6,7 @@ from datetime import datetime
 
 import pandas as pd
 
-from air_raid_alerts.regions import RegionSpec, get_region
+from air_raid_alerts.regions import get_region
 from air_raid_alerts.schema import EventCol, IntervalCol, MERGED_INTERVAL_COLUMNS
 from air_raid_alerts.time_intervals import is_invalid_interval, is_outlier_interval_duration
 
@@ -99,7 +99,3 @@ def build_merged_intervals(
         )
 
     return pd.DataFrame(rows)
-
-
-def rollup_mode_for_region(region_id: str) -> RegionSpec:
-    return get_region(region_id)

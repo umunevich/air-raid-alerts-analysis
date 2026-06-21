@@ -38,12 +38,6 @@ def is_outlier_event_duration(start: datetime, end: datetime | None) -> bool:
     return is_outlier_interval_duration(start, end)
 
 
-def duration_minutes(start: datetime, end: datetime | None) -> float | None:
-    if end is None:
-        return None
-    return interval_duration(start, end).total_seconds() / 60.0
-
-
 def overlaps_half_open(
     interval_start: datetime,
     interval_end: datetime,

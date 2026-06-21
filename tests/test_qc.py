@@ -5,11 +5,8 @@ import json
 import pandas as pd
 import pytest
 
-from air_raid_alerts.features.lags import (
-    assert_features_use_no_future_panel_rows,
-    sum_active_in_past_hours,
-)
-from air_raid_alerts.schema import EventCol, IntervalCol, PanelCol, exposure_label
+from air_raid_alerts.features.build import build_feature_matrix
+from air_raid_alerts.schema import EventCol, FeatureCol, IntervalCol, PanelCol, active_sum_column, exposure_label
 from air_raid_alerts.transform.clean import load_vadimkin_events
 from air_raid_alerts.transform.intervals import build_merged_intervals
 from air_raid_alerts.transform.panel import build_exposure_labels, build_hourly_panel
@@ -80,11 +77,11 @@ def test_lag_features_do_not_use_future_hours(sample_vadimkin_path) -> None:
     merged = build_merged_intervals(events, "kyiv_city")
     panel = build_hourly_panel(merged, utc(2024, 6, 1, 7), utc(2024, 6, 1, 14))
     origin = utc(2024, 6, 1, 10)
-    assert_features_use_no_future_panel_rows(panel, origin, lookback=3)
-    lag_sum = sum_active_in_past_hours(panel, origin, lookback=3)
-    assert lag_sum == int(
-        panel.loc[panel[PanelCol.ORIGIN_HOUR] < origin].tail(3)[PanelCol.ACTIVE].sum()
-    )
+    features = build_feature_matrix(panel, merged, lag_hours=[3])
+    row = features.loc[features[PanelCol.ORIGIN_HOUR] == origin].iloc[0]
+    expected = int(panel.loc[panel[PanelCol.ORIGIN_HOUR] < origin].tail(3)[PanelCol.ACTIVE].sum())
+    assert row[active_sum_column(3)] == expected
+    assert row[FeatureCol.ACTIVE_AT_ORIGIN] in (0, 1)
 
 
 def test_labels_consistent_with_exposure_definition(sample_vadimkin_path) -> None:
