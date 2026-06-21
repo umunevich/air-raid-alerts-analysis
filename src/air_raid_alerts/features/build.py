@@ -7,9 +7,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import yaml
 
-from air_raid_alerts.paths import project_root
+from air_raid_alerts.config import default_feature_lag_hours, load_app_config
 from air_raid_alerts.schema import (
     FeatureCol,
     PanelCol,
@@ -24,10 +23,6 @@ from air_raid_alerts.time_intervals import (
     timestamps_to_ns,
 )
 
-DEFAULT_LAG_HOURS: tuple[int, ...] = (1, 3, 6, 24, 48, 168)
-DEFAULT_DISPLAY_TIMEZONE = "Europe/Kyiv"
-FEATURES_CONFIG_PATH = project_root() / "configs" / "features.yaml"
-
 
 @dataclass(frozen=True)
 class FeatureConfig:
@@ -36,23 +31,25 @@ class FeatureConfig:
 
 
 def load_feature_config(path: Path | None = None) -> FeatureConfig:
-    config_path = path or FEATURES_CONFIG_PATH
-    if not config_path.is_file():
-        return FeatureConfig(
-            lag_hours=DEFAULT_LAG_HOURS,
-            display_timezone=DEFAULT_DISPLAY_TIMEZONE,
-        )
+    if path is not None:
+        # Explicit path: legacy override file with lags only; timezone from app config.
+        import yaml
 
-    with config_path.open(encoding="utf-8") as handle:
-        raw = yaml.safe_load(handle) or {}
+        config = load_app_config()
+        with path.open(encoding="utf-8") as handle:
+            raw = yaml.safe_load(handle) or {}
+        lag_hours = tuple(int(h) for h in raw.get("lags_hours", config.feature_lag_hours))
+        return FeatureConfig(lag_hours=lag_hours, display_timezone=config.timezone_display)
 
-    lag_hours = tuple(int(h) for h in raw.get("lags_hours", DEFAULT_LAG_HOURS))
-    display_timezone = str(raw.get("display_timezone", DEFAULT_DISPLAY_TIMEZONE))
-    return FeatureConfig(lag_hours=lag_hours, display_timezone=display_timezone)
+    config = load_app_config()
+    return FeatureConfig(
+        lag_hours=config.feature_lag_hours,
+        display_timezone=config.timezone_display,
+    )
 
 
 def feature_column_names(lag_hours: tuple[int, ...] | list[int] | None = None) -> list[str]:
-    lags = tuple(lag_hours) if lag_hours is not None else DEFAULT_LAG_HOURS
+    lags = tuple(lag_hours) if lag_hours is not None else default_feature_lag_hours()
     return [
         FeatureCol.ACTIVE_AT_ORIGIN,
         *[active_sum_column(h) for h in lags],
@@ -62,19 +59,6 @@ def feature_column_names(lag_hours: tuple[int, ...] | list[int] | None = None) -
         FeatureCol.DAY_OF_WEEK_KYIV,
         FeatureCol.HOUR_OF_WEEK_KYIV,
     ]
-
-
-def _active_at_instant_vectorized(
-    intervals: pd.DataFrame,
-    origin_ns: np.ndarray,
-) -> np.ndarray:
-    if intervals.empty:
-        return np.zeros(len(origin_ns), dtype=np.int8)
-
-    active = np.zeros(len(origin_ns), dtype=np.int8)
-    starts, ends = interval_bounds_ns(intervals)
-    or_intervals_cover_instants(starts, ends, origin_ns, active)
-    return active
 
 
 def _calendar_features(origin_hours: pd.Series, timezone: str) -> pd.DataFrame:
@@ -103,12 +87,25 @@ def _lag_sums(origins: pd.DataFrame, lag_hours: tuple[int, ...]) -> pd.DataFrame
     return pd.DataFrame(lag_data)
 
 
+def _active_at_instant_vectorized(
+    intervals: pd.DataFrame,
+    origin_ns: np.ndarray,
+) -> np.ndarray:
+    if intervals.empty:
+        return np.zeros(len(origin_ns), dtype=np.int8)
+
+    active = np.zeros(len(origin_ns), dtype=np.int8)
+    starts, ends = interval_bounds_ns(intervals)
+    or_intervals_cover_instants(starts, ends, origin_ns, active)
+    return active
+
+
 def build_feature_matrix(
     origins: pd.DataFrame,
     intervals: pd.DataFrame,
     *,
     lag_hours: tuple[int, ...] | list[int] | None = None,
-    display_timezone: str = DEFAULT_DISPLAY_TIMEZONE,
+    display_timezone: str | None = None,
 ) -> pd.DataFrame:
     """
     One row per forecast origin hour with features available at or before origin t.
@@ -116,12 +113,15 @@ def build_feature_matrix(
     Lag sums use hourly ``active`` flags for hours strictly before ``origin_hour``.
     ``active_at_origin`` is alert state at instant t (persistence signal).
     """
+    feature_config = load_feature_config()
+    lags = tuple(lag_hours) if lag_hours is not None else feature_config.lag_hours
+    timezone = display_timezone or feature_config.display_timezone
+
     if origins.empty:
         return pd.DataFrame(
-            columns=[PanelCol.REGION_ID, PanelCol.ORIGIN_HOUR, *feature_column_names(lag_hours)]
+            columns=[PanelCol.REGION_ID, PanelCol.ORIGIN_HOUR, *feature_column_names(lags)]
         )
 
-    lags = tuple(lag_hours) if lag_hours is not None else DEFAULT_LAG_HOURS
     ordered = origins.sort_values(PanelCol.ORIGIN_HOUR).reset_index(drop=True)
     origin_ns = timestamps_to_ns(ordered[PanelCol.ORIGIN_HOUR])
 
@@ -142,7 +142,7 @@ def build_feature_matrix(
         features[FeatureCol.TIME_SINCE_LAST_START_H] = hours_since_last_event(origin_ns, starts)
         features[FeatureCol.TIME_SINCE_LAST_END_H] = hours_since_last_event(origin_ns, ends)
 
-    calendar = _calendar_features(ordered[PanelCol.ORIGIN_HOUR], display_timezone)
+    calendar = _calendar_features(ordered[PanelCol.ORIGIN_HOUR], timezone)
     features = pd.concat([features, calendar], axis=1)
     return features
 

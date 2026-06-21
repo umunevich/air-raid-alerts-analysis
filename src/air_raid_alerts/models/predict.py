@@ -5,17 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from air_raid_alerts.models.exposure import FittedExposureModel, model_prediction_column
+from air_raid_alerts.config import display_timezone
+from air_raid_alerts.models.exposure import model_prediction_column
 from air_raid_alerts.models.persist import load_exposure_model
 from air_raid_alerts.models.train import load_training_matrix
 from air_raid_alerts.regions import get_region
 from air_raid_alerts.schema import PanelCol
-
-DISPLAY_TIMEZONE = ZoneInfo("Europe/Kyiv")
 
 
 @dataclass(frozen=True)
@@ -85,7 +83,7 @@ def predict_exposure_forecast(
         region_id=region_id,
         region_name=spec.display_name,
         origin_hour_utc=origin_utc,
-        origin_hour_local=origin_utc.astimezone(DISPLAY_TIMEZONE),
+        origin_hour_local=origin_utc.astimezone(display_timezone()),
         probabilities=probabilities,
     )
 

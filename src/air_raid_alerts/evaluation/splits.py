@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from air_raid_alerts.config import load_app_config
 from air_raid_alerts.regions import get_region
+from air_raid_alerts.schema import SplitName
 
 
 @dataclass(frozen=True)
@@ -20,15 +22,18 @@ class SplitBoundaries:
 def compute_split_boundaries(
     data_cutoff: datetime,
     *,
-    validation_weeks: int = 8,
-    test_weeks: int = 4,
+    validation_weeks: int | None = None,
+    test_weeks: int | None = None,
 ) -> SplitBoundaries:
     """Compute global val/test windows anchored at data_cutoff."""
+    config = load_app_config()
+    val_weeks = validation_weeks if validation_weeks is not None else config.validation_weeks
+    test_weeks_value = test_weeks if test_weeks is not None else config.test_weeks
     cutoff = data_cutoff.astimezone(UTC)
     test_end = cutoff
-    test_start = cutoff - timedelta(weeks=test_weeks)
+    test_start = cutoff - timedelta(weeks=test_weeks_value)
     val_end = test_start
-    val_start = val_end - timedelta(weeks=validation_weeks)
+    val_start = val_end - timedelta(weeks=val_weeks)
     train_end = val_start
     return SplitBoundaries(
         train_end=train_end,
@@ -52,12 +57,12 @@ def assign_split(origin_hour: datetime, boundaries: SplitBoundaries) -> str:
     """Assign an hourly origin to train, validation, or test."""
     t = origin_hour.astimezone(UTC)
     if boundaries.test_start < t <= boundaries.test_end:
-        return "test"
+        return SplitName.TEST
     if boundaries.val_start < t <= boundaries.val_end:
-        return "validation"
+        return SplitName.VALIDATION
     if t <= boundaries.train_end:
-        return "train"
-    return "holdout"
+        return SplitName.TRAIN
+    return SplitName.HOLDOUT
 
 
 def is_in_primary_train(

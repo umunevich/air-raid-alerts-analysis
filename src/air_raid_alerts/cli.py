@@ -6,11 +6,16 @@ import argparse
 import sys
 
 from air_raid_alerts import __version__
+from air_raid_alerts.config import default_region_id
 from air_raid_alerts.ingest.fetch_vadimkin import main as fetch_main
-from air_raid_alerts.models.persist import load_exposure_model, model_output_path, save_exposure_model
+from air_raid_alerts.models.persist import model_output_path
 from air_raid_alerts.models.predict import format_forecast, predict_exposure_forecast
 from air_raid_alerts.models.train import format_report, metrics_output_path, train_and_evaluate, write_report_json
 from air_raid_alerts.transform.pipeline import process_region
+
+
+def _default_region() -> str:
+    return default_region_id()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -44,8 +49,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     process_parser.add_argument(
         "--region",
-        default="kyiv_city",
-        help="Region ID from registry (default: kyiv_city).",
+        default=_default_region(),
+        help=f"Region ID from registry (default: {default_region_id()}).",
     )
     process_parser.add_argument(
         "--raw-csv",
@@ -66,8 +71,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     train_parser.add_argument(
         "--region",
-        default="kyiv_city",
-        help="Region ID from registry (default: kyiv_city).",
+        default=_default_region(),
+        help=f"Region ID from registry (default: {default_region_id()}).",
     )
     train_parser.add_argument(
         "--training-matrix",
@@ -87,8 +92,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     predict_parser.add_argument(
         "--region",
-        default="kyiv_city",
-        help="Region ID from registry (default: kyiv_city).",
+        default=_default_region(),
+        help=f"Region ID from registry (default: {default_region_id()}).",
     )
     predict_parser.add_argument(
         "--at",

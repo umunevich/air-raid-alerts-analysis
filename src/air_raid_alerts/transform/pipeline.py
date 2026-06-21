@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from air_raid_alerts.config import load_app_config
 from air_raid_alerts.evaluation.splits import (
     SplitBoundaries,
     assign_split,
@@ -100,12 +101,16 @@ def build_region_dataset(
     events: pd.DataFrame,
     region_id: str,
     *,
-    validation_weeks: int = 8,
-    test_weeks: int = 4,
+    validation_weeks: int | None = None,
+    test_weeks: int | None = None,
     horizons: range | list[int] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
     """Run transform steps in memory; return intervals, origins, features, training matrix, manifest."""
     get_region(region_id)
+    config = load_app_config()
+    val_weeks = validation_weeks if validation_weeks is not None else config.validation_weeks
+    test_weeks_value = test_weeks if test_weeks is not None else config.test_weeks
+    horizon_values = list(horizons) if horizons is not None else list(config.forecast_horizons)
 
     intervals = build_merged_intervals(events, region_id)
     duration_errors = validate_event_durations(intervals)
@@ -119,12 +124,12 @@ def build_region_dataset(
     range_start, range_end = _hourly_range(intervals, data_cutoff)
     boundaries = compute_split_boundaries(
         data_cutoff,
-        validation_weeks=validation_weeks,
-        test_weeks=test_weeks,
+        validation_weeks=val_weeks,
+        test_weeks=test_weeks_value,
     )
 
     panel = build_hourly_panel(intervals, range_start, range_end)
-    labels = build_exposure_labels(intervals, panel[PanelCol.ORIGIN_HOUR], horizons=horizons)
+    labels = build_exposure_labels(intervals, panel[PanelCol.ORIGIN_HOUR], horizons=horizon_values)
     origins = panel.merge(labels, on=[PanelCol.REGION_ID, PanelCol.ORIGIN_HOUR])
     origins = _annotate_splits(origins, region_id, boundaries)
 
@@ -157,8 +162,8 @@ def build_region_dataset(
             "test_start": boundaries.test_start.isoformat(),
             "test_end": boundaries.test_end.isoformat(),
         },
-        "validation_weeks": validation_weeks,
-        "test_weeks": test_weeks,
+        "validation_weeks": val_weeks,
+        "test_weeks": test_weeks_value,
     }
     return intervals, origins, features, training_matrix, manifest
 
@@ -168,8 +173,8 @@ def process_region(
     *,
     raw_csv_path: Path | None = None,
     output_dir: Path | None = None,
-    validation_weeks: int = 8,
-    test_weeks: int = 4,
+    validation_weeks: int | None = None,
+    test_weeks: int | None = None,
     horizons: range | list[int] | None = None,
 ) -> ProcessResult:
     """Load raw Vadimkin CSV, transform, and write processed artifacts for one region."""

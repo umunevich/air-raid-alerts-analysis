@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 
+from air_raid_alerts.config import default_forecast_horizons
 from air_raid_alerts.schema import (
     IntervalCol,
     PANEL_COLUMNS,
@@ -134,7 +135,7 @@ def build_exposure_labels(
 ) -> pd.DataFrame:
     """Build y_r,N for each origin hour and horizon N."""
     if horizons is None:
-        horizons = range(1, 25)
+        horizons = default_forecast_horizons()
 
     origin_index = pd.DatetimeIndex(origins, tz="UTC")
     region_id = intervals[IntervalCol.REGION_ID].iloc[0] if not intervals.empty else None

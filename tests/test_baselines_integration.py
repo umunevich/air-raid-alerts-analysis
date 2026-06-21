@@ -2,7 +2,8 @@
 
 import pandas as pd
 
-from air_raid_alerts.models.baselines import fit_baselines, label_horizons, predict_baselines
+from air_raid_alerts.models.baselines import fit_baselines, predict_baselines
+from air_raid_alerts.schema import label_horizons
 from air_raid_alerts.transform.clean import load_vadimkin_events
 from air_raid_alerts.transform.pipeline import build_region_dataset
 from helpers import sample_vadimkin_path

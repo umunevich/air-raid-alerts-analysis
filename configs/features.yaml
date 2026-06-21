@@ -1,5 +1,5 @@
-# Hourly supervised training features (no leakage at forecast origin t).
-display_timezone: Europe/Kyiv
+# Optional overrides for feature engineering (see configs/default.yaml for defaults).
+# display_timezone is taken from project.timezone_display in default.yaml.
 
 lags_hours:
   - 1

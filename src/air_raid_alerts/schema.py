@@ -73,6 +73,13 @@ class ProcessedCol:
     IN_PRIMARY_TRAIN = "in_primary_train"
 
 
+class SplitName:
+    TRAIN = "train"
+    VALIDATION = "validation"
+    TEST = "test"
+    HOLDOUT = "holdout"
+
+
 class FeatureCol:
     ACTIVE_AT_ORIGIN = "active_at_origin"
     TIME_SINCE_LAST_START_H = "time_since_last_start_h"
@@ -103,6 +110,15 @@ def is_exposure_label(column_name: str) -> bool:
     return column_name.startswith(EXPOSURE_LABEL_PREFIX)
 
 
+def label_horizons(labels) -> list[int]:
+    columns = labels.columns if hasattr(labels, "columns") else labels
+    return sorted(
+        int(column.removeprefix(EXPOSURE_LABEL_PREFIX))
+        for column in columns
+        if is_exposure_label(column)
+    )
+
+
 __all__ = [
     "AdminLevel",
     "EventCol",
@@ -113,9 +129,11 @@ __all__ = [
     "PANEL_COLUMNS",
     "PanelCol",
     "ProcessedCol",
+    "SplitName",
     "VADIMKIN_COLUMNS",
     "VadimkinCol",
     "active_sum_column",
     "exposure_label",
     "is_exposure_label",
+    "label_horizons",
 ]

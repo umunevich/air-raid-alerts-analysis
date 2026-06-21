@@ -2,6 +2,7 @@
 
 import pandas as pd
 
+from air_raid_alerts.config import load_app_config
 from air_raid_alerts.features.build import (
     build_feature_matrix,
     build_training_matrix,
@@ -17,9 +18,10 @@ from helpers import intervals_df, sample_vadimkin_path, utc
 
 
 def test_load_feature_config_matches_defaults() -> None:
+    app_config = load_app_config()
     config = load_feature_config()
-    assert config.lag_hours == (1, 3, 6, 24, 48, 168)
-    assert config.display_timezone == "Europe/Kyiv"
+    assert config.lag_hours == app_config.feature_lag_hours
+    assert config.display_timezone == app_config.timezone_display
 
 
 def test_feature_matrix_columns(sample_vadimkin_path) -> None:

@@ -11,8 +11,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from air_raid_alerts.models.baselines import label_horizons
-from air_raid_alerts.schema import PanelCol, ProcessedCol, exposure_label, is_exposure_label
+from air_raid_alerts.schema import PanelCol, ProcessedCol, SplitName, exposure_label, is_exposure_label, label_horizons
 
 
 def model_prediction_column(horizon_hours: int) -> str:
@@ -42,13 +41,13 @@ def primary_train_mask(training_matrix: pd.DataFrame) -> pd.Series:
 def validation_split_mask(training_matrix: pd.DataFrame) -> pd.Series:
     if ProcessedCol.SPLIT not in training_matrix.columns:
         raise ValueError(f"Missing column: {ProcessedCol.SPLIT}")
-    return training_matrix[ProcessedCol.SPLIT] == "validation"
+    return training_matrix[ProcessedCol.SPLIT] == SplitName.VALIDATION
 
 
 def test_split_mask(training_matrix: pd.DataFrame) -> pd.Series:
     if ProcessedCol.SPLIT not in training_matrix.columns:
         raise ValueError(f"Missing column: {ProcessedCol.SPLIT}")
-    return training_matrix[ProcessedCol.SPLIT] == "test"
+    return training_matrix[ProcessedCol.SPLIT] == SplitName.TEST
 
 
 def _make_pipeline() -> Pipeline:

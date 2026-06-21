@@ -10,8 +10,9 @@ import pandas as pd
 from air_raid_alerts.schema import (
     FeatureCol,
     ProcessedCol,
+    SplitName,
     exposure_label,
-    is_exposure_label,
+    label_horizons,
 )
 
 BASELINE_MARGINAL = "marginal"
@@ -27,10 +28,6 @@ BASELINE_NAMES: tuple[str, ...] = (
 
 def baseline_prediction_column(baseline: str, horizon_hours: int) -> str:
     return f"pred_{baseline}_{exposure_label(horizon_hours)}"
-
-
-def label_horizons(labels: pd.DataFrame) -> list[int]:
-    return sorted(int(column.removeprefix("y_")) for column in labels.columns if is_exposure_label(column))
 
 
 @dataclass(frozen=True)
@@ -63,7 +60,7 @@ class FittedBaselines:
 
 def _default_fit_mask(training_matrix: pd.DataFrame) -> pd.Series:
     if ProcessedCol.SPLIT in training_matrix.columns:
-        return training_matrix[ProcessedCol.SPLIT] == "train"
+        return training_matrix[ProcessedCol.SPLIT] == SplitName.TRAIN
     return pd.Series(True, index=training_matrix.index)
 
 

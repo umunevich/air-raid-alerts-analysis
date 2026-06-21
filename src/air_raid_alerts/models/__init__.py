@@ -8,9 +8,9 @@ from air_raid_alerts.models.baselines import (
     FittedBaselines,
     baseline_prediction_column,
     fit_baselines,
-    label_horizons,
     predict_baselines,
 )
+from air_raid_alerts.schema import label_horizons
 from air_raid_alerts.models.calibration import CalibrationMethod, calibrate_exposure_model
 from air_raid_alerts.models.exposure import (
     FittedExposureModel,
